@@ -25,6 +25,17 @@ export default function MapPage() {
   const [error, setError] = useState<string | null>(null);
   const [locations, setLocations] = useState<LocationRow[]>([]);
 
+  // ✅ Mobile fixes: ensure map resizes properly on viewport/orientation changes
+  useEffect(() => {
+    const onResize = () => mapRef.current?.resize();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+
   // 1) Load locations from Supabase
   useEffect(() => {
     let cancelled = false;
@@ -147,8 +158,6 @@ export default function MapPage() {
           const rawId = (feature.properties as any)?.id;
           const id = typeof rawId === "string" ? rawId : String(rawId ?? "");
 
-          console.log("Clicked feature id:", rawId, "->", id, "all props:", feature.properties);
-
           if (!id || id === "undefined" || id === "null") {
             setError("This pin has no valid id (cannot open reviews).");
             return;
@@ -174,7 +183,8 @@ export default function MapPage() {
             `</div>` +
             `</div>`;
 
-          const popup = new mapboxgl.Popup({ offset: 20 })
+          // ✅ Mobile: slightly bigger offset makes popups easier to tap
+          const popup = new mapboxgl.Popup({ offset: 28 })
             .setLngLat(coords)
             .setHTML(html)
             .addTo(map);
@@ -198,6 +208,7 @@ export default function MapPage() {
       map.remove();
       mapRef.current = null;
     };
+    // NOTE: keep this as-is since it's your current pattern, but removing geojson here is also fine.
   }, [token, geojson]);
 
   // 4) Update source data when locations change (no reinit)
@@ -219,9 +230,18 @@ export default function MapPage() {
   }
 
   return (
-    <main style={{ height: "100vh", width: "100vw", position: "relative" }}>
+    // ✅ Mobile: use dynamic viewport height to reduce iOS/Android address bar jump
+    <main style={{ height: "100dvh", width: "100vw", position: "relative" }}>
       {/* Full screen map (absolute) */}
-      <div id="rrs-map" style={{ position: "absolute", inset: 0 }} />
+      <div
+        id="rrs-map"
+        style={{
+          position: "absolute",
+          inset: 0,
+          // ✅ Mobile: prevents page scroll fighting map gestures
+          touchAction: "none",
+        }}
+      />
 
       {/* Add location button */}
       <a
