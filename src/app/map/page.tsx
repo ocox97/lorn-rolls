@@ -284,7 +284,7 @@ export default function MapPage() {
           bottom: 12,
           zIndex: 9999,
           pointerEvents: "none",
-          background: "rgba(255,255,255,0.92)",
+          background: "#ffffff",
           border: "1px solid rgba(0,0,0,0.08)",
           borderRadius: 14,
           padding: "10px 12px",
@@ -296,9 +296,9 @@ export default function MapPage() {
         {error ? (
           <div style={{ color: "#b00020", fontWeight: 700 }}>Error: {error}</div>
         ) : loading ? (
-          <div style={{ opacity: 0.8 }}>Loading locations…</div>
+          <div style={{ color: "#555" }}>Loading locations…</div>
         ) : (
-          <div style={{ opacity: 0.8 }}>{locations.length} locations</div>
+          <div style={{ color: "#555" }}>{locations.length} locations</div>
         )}
       </div>
 
@@ -312,7 +312,8 @@ export default function MapPage() {
             bottom: 0,
             height: "50dvh", // 👈 bottom half of the screen
             zIndex: 10000,
-            background: "rgba(255,255,255,0.98)",
+            background: "#ffffff",
+color: "#111",
             borderTopLeftRadius: 18,
             borderTopRightRadius: 18,
             boxShadow: "0 -12px 30px rgba(0,0,0,0.18)",
