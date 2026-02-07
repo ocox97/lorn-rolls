@@ -15,15 +15,23 @@ type LocationRow = {
 
 type GeoJsonFeatureCollection = GeoJSON.FeatureCollection<GeoJSON.Point, any>;
 
+type SelectedPlace = {
+  id: string;
+  name: string;
+  description: string;
+  lng: number;
+  lat: number;
+};
+
 export default function MapPage() {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [selected, setSelected] = useState<SelectedPlace | null>(null);
 
   // ✅ Mobile fixes: ensure map resizes properly on viewport/orientation changes
   useEffect(() => {
@@ -82,7 +90,7 @@ export default function MapPage() {
           },
           geometry: {
             type: "Point",
-            coordinates: [l.lng, l.lat], // IMPORTANT: [LNG, LAT]
+            coordinates: [l.lng, l.lat],
           },
         })),
     };
@@ -91,14 +99,14 @@ export default function MapPage() {
   // 3) Initialise map ONCE
   useEffect(() => {
     if (!token) return;
-    if (mapRef.current) return; // already created
+    if (mapRef.current) return;
 
     mapboxgl.accessToken = token;
 
     const map = new mapboxgl.Map({
       container: "rrs-map",
       style: "mapbox://styles/mapbox/streets-v12",
-      center: [-2.7, 56.223], // East Neuk-ish
+      center: [-2.7, 56.223],
       zoom: 11,
     });
 
@@ -149,11 +157,14 @@ export default function MapPage() {
           });
         }
 
+        // ✅ Click pin → open fixed bottom sheet (NOT a map popup)
         map.on("click", "places-layer", (e) => {
           const feature = e.features?.[0];
           if (!feature) return;
 
           const coords = (feature.geometry as any).coordinates.slice();
+          const lng = Number(coords[0]);
+          const lat = Number(coords[1]);
 
           const rawId = (feature.properties as any)?.id;
           const id = typeof rawId === "string" ? rawId : String(rawId ?? "");
@@ -166,30 +177,13 @@ export default function MapPage() {
           const name = (feature.properties as any)?.name ?? "Untitled";
           const desc = (feature.properties as any)?.description ?? "";
 
-          popupRef.current?.remove();
-
-          const rateUrl = `/add?locationId=${encodeURIComponent(id)}`;
-          const reviewsUrl = `/place/${encodeURIComponent(id)}`;
-
-          const html =
-            `<div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; min-width: 220px;">` +
-            `<div style="font-weight:700; font-size: 14px;">${escapeHtml(name)}</div>` +
-            (desc
-              ? `<div style="opacity:.8; margin-top: 4px; font-size: 13px;">${escapeHtml(desc)}</div>`
-              : "") +
-            `<div style="display:flex; gap:8px; margin-top: 10px;">` +
-            `<a href="${rateUrl}" style="text-decoration:none; padding:8px 10px; border-radius:10px; background:#111; color:#fff; font-weight:700; font-size:12px;">Rate this roll</a>` +
-            `<a href="${reviewsUrl}" style="text-decoration:none; padding:8px 10px; border-radius:10px; border:1px solid #ddd; background:#fff; color:#111; font-weight:700; font-size:12px;">View reviews</a>` +
-            `</div>` +
-            `</div>`;
-
-          // ✅ Mobile: slightly bigger offset makes popups easier to tap
-          const popup = new mapboxgl.Popup({ offset: 28 })
-            .setLngLat(coords)
-            .setHTML(html)
-            .addTo(map);
-
-          popupRef.current = popup;
+          setSelected({
+            id,
+            name,
+            description: desc,
+            lng,
+            lat,
+          });
         });
 
         map.on("mouseenter", "places-layer", () => {
@@ -204,14 +198,12 @@ export default function MapPage() {
     mapRef.current = map;
 
     return () => {
-      popupRef.current?.remove();
       map.remove();
       mapRef.current = null;
     };
-    // NOTE: keep this as-is since it's your current pattern, but removing geojson here is also fine.
   }, [token, geojson]);
 
-  // 4) Update source data when locations change (no reinit)
+  // 4) Update source data when locations change
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -219,6 +211,25 @@ export default function MapPage() {
     if (!src) return;
     src.setData(geojson);
   }, [geojson]);
+
+  // ✅ When bottom sheet opens/closes, add map padding so pins aren't hidden behind it
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (selected) {
+      map.easeTo({
+        center: [selected.lng, selected.lat],
+        // a small vertical offset so the pin sits above the sheet
+        offset: [0, -120],
+        duration: 450,
+      });
+
+      map.setPadding({ top: 0, left: 0, right: 0, bottom: Math.round(window.innerHeight * 0.5) });
+    } else {
+      map.setPadding({ top: 0, left: 0, right: 0, bottom: 0 });
+    }
+  }, [selected]);
 
   if (!token) {
     return (
@@ -229,16 +240,17 @@ export default function MapPage() {
     );
   }
 
+  const rateUrl = selected ? `/add?locationId=${encodeURIComponent(selected.id)}` : "#";
+  const reviewsUrl = selected ? `/place/${encodeURIComponent(selected.id)}` : "#";
+
   return (
-    // ✅ Mobile: use dynamic viewport height to reduce iOS/Android address bar jump
     <main style={{ height: "100dvh", width: "100vw", position: "relative" }}>
-      {/* Full screen map (absolute) */}
+      {/* Full screen map */}
       <div
         id="rrs-map"
         style={{
           position: "absolute",
           inset: 0,
-          // ✅ Mobile: prevents page scroll fighting map gestures
           touchAction: "none",
         }}
       />
@@ -264,7 +276,7 @@ export default function MapPage() {
         + Add a location
       </a>
 
-      {/* Status overlay (doesn't block clicks) */}
+      {/* Status overlay */}
       <div
         style={{
           position: "fixed",
@@ -289,15 +301,96 @@ export default function MapPage() {
           <div style={{ opacity: 0.8 }}>{locations.length} locations</div>
         )}
       </div>
+
+      {/* ✅ Fixed bottom sheet (only when a place is selected) */}
+      {selected ? (
+        <div
+          style={{
+            position: "fixed",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: "50dvh", // 👈 bottom half of the screen
+            zIndex: 10000,
+            background: "rgba(255,255,255,0.98)",
+            borderTopLeftRadius: 18,
+            borderTopRightRadius: 18,
+            boxShadow: "0 -12px 30px rgba(0,0,0,0.18)",
+            borderTop: "1px solid rgba(0,0,0,0.08)",
+            padding: 14,
+            overflow: "auto",
+            WebkitOverflowScrolling: "touch",
+            pointerEvents: "auto",
+            fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{selected.name}</div>
+              {selected.description ? (
+                <div style={{ opacity: 0.75, marginTop: 4, fontSize: 13 }}>{selected.description}</div>
+              ) : null}
+            </div>
+
+            <button
+              onClick={() => setSelected(null)}
+              style={{
+                border: "1px solid rgba(0,0,0,0.15)",
+                background: "#fff",
+                borderRadius: 12,
+                padding: "8px 10px",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+            <a
+              href={rateUrl}
+              style={{
+                flex: 1,
+                textDecoration: "none",
+                padding: "12px 12px",
+                borderRadius: 14,
+                background: "#111",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 13,
+                textAlign: "center",
+              }}
+            >
+              Rate this roll
+            </a>
+
+            <a
+              href={reviewsUrl}
+              style={{
+                flex: 1,
+                textDecoration: "none",
+                padding: "12px 12px",
+                borderRadius: 14,
+                border: "1px solid #ddd",
+                background: "#fff",
+                color: "#111",
+                fontWeight: 800,
+                fontSize: 13,
+                textAlign: "center",
+              }}
+            >
+              View reviews
+            </a>
+          </div>
+
+          {/* Optional extra space / future content */}
+          <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
+            Tip: zoom in to see nearby places, then tap another pin to switch.
+          </div>
+        </div>
+      ) : null}
     </main>
   );
-}
-
-function escapeHtml(str: string) {
-  return str
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
