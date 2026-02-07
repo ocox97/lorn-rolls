@@ -1,7 +1,6 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // IMPORTANT: do NOT use output: "export" on Vercel for dynamic pages like /add
 };
 
-export default nextConfig;
+module.exports = nextConfig;
