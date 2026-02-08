@@ -10,6 +10,7 @@ export default function AddLocationPage() {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const mapLoadedRef = useRef(false);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -19,22 +20,17 @@ export default function AddLocationPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
-  // GeoJSON for the selected pin (so we can render it as a Mapbox symbol layer)
   const selectedGeojson: GeoJsonFeatureCollection = useMemo(() => {
-    if (lat == null || lng == null) {
-      return { type: "FeatureCollection", features: [] };
-    }
+    if (lat == null || lng == null) return { type: "FeatureCollection", features: [] };
     return {
       type: "FeatureCollection",
       features: [
         {
           type: "Feature",
           properties: {},
-          geometry: {
-            type: "Point",
-            coordinates: [lng, lat],
-          },
+          geometry: { type: "Point", coordinates: [lng, lat] },
         },
       ],
     };
@@ -51,6 +47,7 @@ export default function AddLocationPage() {
     };
   }, []);
 
+  // ✅ Init map ONCE (note: dependency ONLY token)
   useEffect(() => {
     if (!token) return;
     if (mapRef.current) return;
@@ -67,7 +64,8 @@ export default function AddLocationPage() {
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
     map.on("load", () => {
-      // Load the same pin image you use on /map
+      mapLoadedRef.current = true;
+
       map.loadImage("/roll-pin.png", (err, image) => {
         if (err || !image) {
           console.error("Failed to load /roll-pin.png", err);
@@ -75,19 +73,17 @@ export default function AddLocationPage() {
           return;
         }
 
-        if (!map.hasImage("roll-pin")) {
-          map.addImage("roll-pin", image);
-        }
+        if (!map.hasImage("roll-pin")) map.addImage("roll-pin", image);
 
-        // Source for the selected pin
+        // Source for selected pin
         if (!map.getSource("selected-pin")) {
           map.addSource("selected-pin", {
             type: "geojson",
-            data: selectedGeojson,
+            data: { type: "FeatureCollection", features: [] },
           });
         }
 
-        // Layer to render the selected pin
+        // Layer to render selected pin
         if (!map.getLayer("selected-pin-layer")) {
           map.addLayer({
             id: "selected-pin-layer",
@@ -101,20 +97,38 @@ export default function AddLocationPage() {
             },
           });
         }
+
+        // Optional: a subtle halo ring under the pin for clarity
+        if (!map.getLayer("selected-pin-halo")) {
+          map.addLayer({
+            id: "selected-pin-halo",
+            type: "circle",
+            source: "selected-pin",
+            paint: {
+              "circle-radius": 12,
+              "circle-color": "#facc00",
+              "circle-opacity": 0.25,
+              "circle-stroke-color": "#111",
+              "circle-stroke-width": 1,
+              "circle-stroke-opacity": 0.25,
+            },
+          }, "selected-pin-layer"); // place halo beneath pin
+        }
       });
+    });
 
-      // Click map = set pin coords
-      map.on("click", (e) => {
-        const { lng, lat } = e.lngLat;
-        setLng(lng);
-        setLat(lat);
+    // Click = set coords (no refresh)
+    map.on("click", (e) => {
+      const { lng, lat } = e.lngLat;
+      setLng(lng);
+      setLat(lat);
+      setSavedMsg(null); // clear saved message when moving pin
 
-        // Optional: gentle ease so it feels intentional
-        map.easeTo({
-          center: [lng, lat],
-          zoom: Math.max(map.getZoom(), 15),
-          duration: 450,
-        });
+      // Optional: gentle ease for UX (keeps map position stable)
+      map.easeTo({
+        center: [lng, lat],
+        zoom: Math.max(map.getZoom(), 15),
+        duration: 350,
       });
     });
 
@@ -123,13 +137,15 @@ export default function AddLocationPage() {
     return () => {
       map.remove();
       mapRef.current = null;
+      mapLoadedRef.current = false;
     };
-  }, [token, selectedGeojson]);
+  }, [token]);
 
-  // Whenever lat/lng changes, update the selected-pin source data
+  // ✅ Update the pin source when lat/lng changes (NO map re-init)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    if (!mapLoadedRef.current) return;
 
     const src = map.getSource("selected-pin") as mapboxgl.GeoJSONSource | undefined;
     if (!src) return;
@@ -139,6 +155,7 @@ export default function AddLocationPage() {
 
   async function onSave() {
     setError(null);
+    setSavedMsg(null);
 
     if (!name.trim()) {
       setError("Please add a name for the place.");
@@ -166,12 +183,18 @@ export default function AddLocationPage() {
       return;
     }
 
-    // reset
+    // ✅ Keep the pin where it is. Just clear text fields.
     setName("");
     setDescription("");
-    setLat(null);
-    setLng(null);
     setSaving(false);
+
+    setSavedMsg("Saved! Pin left where you dropped it.");
+
+    // Keep map centred on that pin after save (no jump)
+    const map = mapRef.current;
+    if (map) {
+      map.easeTo({ center: [lng, lat], duration: 250 });
+    }
   }
 
   if (!token) {
@@ -220,6 +243,13 @@ export default function AddLocationPage() {
             <div className="rounded-xl border border-red-200 bg-white p-3 text-red-700">
               <div className="font-semibold">Error</div>
               <div className="text-sm mt-1">{error}</div>
+            </div>
+          ) : null}
+
+          {savedMsg ? (
+            <div className="rounded-xl border border-green-200 bg-white p-3 text-green-700">
+              <div className="font-semibold">Success</div>
+              <div className="text-sm mt-1">{savedMsg}</div>
             </div>
           ) : null}
 
