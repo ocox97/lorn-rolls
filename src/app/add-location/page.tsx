@@ -19,6 +19,17 @@ export default function AddLocationPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // ✅ Mobile: make sure the map resizes correctly on viewport/orientation changes
+  useEffect(() => {
+    const onResize = () => mapRef.current?.resize();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     if (mapRef.current) return;
@@ -34,21 +45,30 @@ export default function AddLocationPage() {
 
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
-    // ✅ click to place/move marker (with clear visual pin)
+    // Inject keyframes for the pin drop animation (keeps everything in this one file)
+    const styleTag = document.createElement("style");
+    styleTag.innerHTML = `
+      @keyframes rrsDrop {
+        0% { transform: rotate(-45deg) translateY(-40px); opacity: 0; }
+        100% { transform: rotate(-45deg) translateY(-20px); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(styleTag);
+
+    // ✅ click to place/move marker (clear visual pin)
     map.on("click", (e) => {
       const { lng, lat } = e.lngLat;
       setLng(lng);
       setLat(lat);
 
-      // Fly/zoom in a bit to make it feel intentional
+      // Optional: small easeTo so it feels intentional
       map.easeTo({
         center: [lng, lat],
         zoom: Math.max(map.getZoom(), 15),
-        duration: 500,
+        duration: 450,
       });
 
       if (!markerRef.current) {
-        // Create a custom pin element (more visible than the default marker)
         const el = document.createElement("div");
         el.style.width = "28px";
         el.style.height = "28px";
@@ -78,24 +98,13 @@ export default function AddLocationPage() {
       } else {
         markerRef.current.setLngLat([lng, lat]);
 
-        // re-trigger the drop animation when moving the pin
+        // re-trigger animation when moving
         const el = markerRef.current.getElement();
         el.style.animation = "none";
-        // force reflow
         void el.offsetHeight;
         el.style.animation = "rrsDrop 0.3s ease-out";
       }
     });
-
-    // Inject keyframes for the pin drop animation (keeps everything in this one file)
-    const styleTag = document.createElement("style");
-    styleTag.innerHTML = `
-      @keyframes rrsDrop {
-        0% { transform: rotate(-45deg) translateY(-40px); opacity: 0; }
-        100% { transform: rotate(-45deg) translateY(-20px); opacity: 1; }
-      }
-    `;
-    document.head.appendChild(styleTag);
 
     mapRef.current = map;
 
@@ -151,8 +160,7 @@ export default function AddLocationPage() {
   if (!token) {
     return (
       <div style={{ padding: 16 }}>
-        Missing <b>NEXT_PUBLIC_MAPBOX_TOKEN</b> in <b>.env.local</b>. Restart{" "}
-        <b>npm run dev</b> after adding it.
+        Missing <b>NEXT_PUBLIC_MAPBOX_TOKEN</b>. Add it in Vercel env vars too.
       </div>
     );
   }
@@ -168,7 +176,7 @@ export default function AddLocationPage() {
           <p className="text-slate-600 mt-1">Click the map to drop a pin, then save.</p>
         </div>
 
-        {/* ✅ CLICKABLE MAP */}
+        {/* MAP */}
         <div className="rounded-2xl bg-white p-4 shadow border border-slate-200">
           <div
             style={{
@@ -180,26 +188,14 @@ export default function AddLocationPage() {
               border: "1px solid rgba(0,0,0,0.08)",
             }}
           >
-            <div id="add-map" style={{ position: "absolute", inset: 0 }} />
-
-            {/* Optional crosshair hint before pin is set */}
-            {lat == null && lng == null ? (
-              <div
-                style={{
-                  position: "absolute",
-                  left: "50%",
-                  top: "50%",
-                  transform: "translate(-50%, -100%)",
-                  fontSize: 28,
-                  color: "#111",
-                  pointerEvents: "none",
-                  opacity: 0.55,
-                  textShadow: "0 2px 8px rgba(255,255,255,0.8)",
-                }}
-              >
-                ⊕
-              </div>
-            ) : null}
+            <div
+              id="add-map"
+              style={{
+                position: "absolute",
+                inset: 0,
+                touchAction: "none", // ✅ stops scroll fighting map gestures
+              }}
+            />
           </div>
 
           <div className="text-xs text-slate-600 mt-2">
@@ -224,7 +220,7 @@ export default function AddLocationPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Tam’s Roll Van"
-              className="w-full rounded-xl border border-slate-200 p-3 outline-none focus:ring-2 focus:ring-slate-300"
+              className="w-full text-base rounded-xl border border-slate-200 p-3 outline-none focus:ring-2 focus:ring-slate-300"
             />
           </div>
 
@@ -234,7 +230,7 @@ export default function AddLocationPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Anything helpful: opening times, what to order, etc."
-              className="w-full rounded-xl border border-slate-200 p-3 outline-none focus:ring-2 focus:ring-slate-300 min-h-[110px]"
+              className="w-full text-base rounded-xl border border-slate-200 p-3 outline-none focus:ring-2 focus:ring-slate-300 min-h-[110px]"
             />
           </div>
 

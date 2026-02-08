@@ -1,33 +1,31 @@
-import Link from "next/link";
-export default function Home() {
+import MapPage from "./map/page";
+
+export default function HomePage() {
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-100 p-6">
-      <div className="w-full max-w-md text-center">
-        <h1 className="text-4xl font-bold mb-3">
-          Roll Rating Scotland 🥖
-        </h1>
-
-        <p className="text-slate-600 mb-8">
-          Find and rate the best Scottish rolls —
-          from vans, bakeries, cafés and corner shops.
-        </p>
-
-        <div className="flex flex-col gap-4">
-          <Link
-            href="/map"
-            className="rounded-2xl bg-black text-white py-4 text-lg font-semibold shadow hover:bg-slate-800 transition"
-          >
-            Find a roll
-          </Link>
-<a
-  href="/add-location"
-  className="rounded-2xl bg-white text-black py-4 text-lg font-semibold shadow hover:bg-slate-100 transition"
->
-  Add a place
-</a>
-
-        </div>
+    <>
+      {/* Title overlay */}
+      <div
+        style={{
+          position: "fixed",
+          top: 12,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 10000,
+          background: "#fff",
+          padding: "10px 16px",
+          borderRadius: 16,
+          fontWeight: 900,
+          fontSize: 16,
+          boxShadow: "0 6px 18px rgba(0,0,0,0.15)",
+          border: "1px solid rgba(0,0,0,0.08)",
+          fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+        }}
+      >
+        🥓 Roll Rating Scotland
       </div>
-    </main>
+
+      {/* Map */}
+      <MapPage />
+    </>
   );
 }
