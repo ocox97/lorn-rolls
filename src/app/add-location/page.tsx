@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import { supabase } from "@/lib/supabaseClient";
+
+type GeoJsonFeatureCollection = GeoJSON.FeatureCollection<GeoJSON.Point, any>;
 
 export default function AddLocationPage() {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markerRef = useRef<mapboxgl.Marker | null>(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -19,7 +20,27 @@ export default function AddLocationPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // ✅ Mobile: make sure the map resizes correctly on viewport/orientation changes
+  // GeoJSON for the selected pin (so we can render it as a Mapbox symbol layer)
+  const selectedGeojson: GeoJsonFeatureCollection = useMemo(() => {
+    if (lat == null || lng == null) {
+      return { type: "FeatureCollection", features: [] };
+    }
+    return {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+        },
+      ],
+    };
+  }, [lat, lng]);
+
+  // Mobile resize fixes
   useEffect(() => {
     const onResize = () => mapRef.current?.resize();
     window.addEventListener("resize", onResize);
@@ -45,77 +66,76 @@ export default function AddLocationPage() {
 
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
-    // Inject keyframes for the pin drop animation (keeps everything in this one file)
-    const styleTag = document.createElement("style");
-    styleTag.innerHTML = `
-      @keyframes rrsDrop {
-        0% { transform: rotate(-45deg) translateY(-40px); opacity: 0; }
-        100% { transform: rotate(-45deg) translateY(-20px); opacity: 1; }
-      }
-    `;
-    document.head.appendChild(styleTag);
+    map.on("load", () => {
+      // Load the same pin image you use on /map
+      map.loadImage("/roll-pin.png", (err, image) => {
+        if (err || !image) {
+          console.error("Failed to load /roll-pin.png", err);
+          setError("Could not load roll-pin.png. Check /public/roll-pin.png");
+          return;
+        }
 
-    // ✅ click to place/move marker (clear visual pin)
-    map.on("click", (e) => {
-      const { lng, lat } = e.lngLat;
-      setLng(lng);
-      setLat(lat);
+        if (!map.hasImage("roll-pin")) {
+          map.addImage("roll-pin", image);
+        }
 
-      // Optional: small easeTo so it feels intentional
-      map.easeTo({
-        center: [lng, lat],
-        zoom: Math.max(map.getZoom(), 15),
-        duration: 450,
+        // Source for the selected pin
+        if (!map.getSource("selected-pin")) {
+          map.addSource("selected-pin", {
+            type: "geojson",
+            data: selectedGeojson,
+          });
+        }
+
+        // Layer to render the selected pin
+        if (!map.getLayer("selected-pin-layer")) {
+          map.addLayer({
+            id: "selected-pin-layer",
+            type: "symbol",
+            source: "selected-pin",
+            layout: {
+              "icon-image": "roll-pin",
+              "icon-size": 0.9,
+              "icon-anchor": "bottom",
+              "icon-allow-overlap": true,
+            },
+          });
+        }
       });
 
-      if (!markerRef.current) {
-        const el = document.createElement("div");
-        el.style.width = "28px";
-        el.style.height = "28px";
-        el.style.background = "#111";
-        el.style.borderRadius = "50% 50% 50% 0";
-        el.style.transform = "rotate(-45deg) translateY(-20px)";
-        el.style.boxShadow = "0 6px 14px rgba(0,0,0,0.35)";
-        el.style.position = "relative";
-        el.style.animation = "rrsDrop 0.3s ease-out";
+      // Click map = set pin coords
+      map.on("click", (e) => {
+        const { lng, lat } = e.lngLat;
+        setLng(lng);
+        setLat(lat);
 
-        const inner = document.createElement("div");
-        inner.style.width = "12px";
-        inner.style.height = "12px";
-        inner.style.background = "#fff";
-        inner.style.borderRadius = "999px";
-        inner.style.position = "absolute";
-        inner.style.top = "8px";
-        inner.style.left = "8px";
-        el.appendChild(inner);
-
-        markerRef.current = new mapboxgl.Marker({
-          element: el,
-          anchor: "bottom",
-        })
-          .setLngLat([lng, lat])
-          .addTo(map);
-      } else {
-        markerRef.current.setLngLat([lng, lat]);
-
-        // re-trigger animation when moving
-        const el = markerRef.current.getElement();
-        el.style.animation = "none";
-        void el.offsetHeight;
-        el.style.animation = "rrsDrop 0.3s ease-out";
-      }
+        // Optional: gentle ease so it feels intentional
+        map.easeTo({
+          center: [lng, lat],
+          zoom: Math.max(map.getZoom(), 15),
+          duration: 450,
+        });
+      });
     });
 
     mapRef.current = map;
 
     return () => {
-      markerRef.current?.remove();
-      markerRef.current = null;
       map.remove();
       mapRef.current = null;
-      styleTag.remove();
     };
-  }, [token]);
+  }, [token, selectedGeojson]);
+
+  // Whenever lat/lng changes, update the selected-pin source data
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const src = map.getSource("selected-pin") as mapboxgl.GeoJSONSource | undefined;
+    if (!src) return;
+
+    src.setData(selectedGeojson);
+  }, [selectedGeojson]);
 
   async function onSave() {
     setError(null);
@@ -151,16 +171,14 @@ export default function AddLocationPage() {
     setDescription("");
     setLat(null);
     setLng(null);
-    markerRef.current?.remove();
-    markerRef.current = null;
-
     setSaving(false);
   }
 
   if (!token) {
     return (
       <div style={{ padding: 16 }}>
-        Missing <b>NEXT_PUBLIC_MAPBOX_TOKEN</b>. Add it in Vercel env vars too.
+        Missing <b>NEXT_PUBLIC_MAPBOX_TOKEN</b> in <b>.env.local</b>. Restart{" "}
+        <b>npm run dev</b> after adding it.
       </div>
     );
   }
@@ -179,25 +197,16 @@ export default function AddLocationPage() {
         {/* MAP */}
         <div className="rounded-2xl bg-white p-4 shadow border border-slate-200">
           <div
+            id="add-map"
             style={{
-              position: "relative",
               height: "60vh",
               width: "100%",
               borderRadius: 16,
               overflow: "hidden",
               border: "1px solid rgba(0,0,0,0.08)",
+              touchAction: "none",
             }}
-          >
-            <div
-              id="add-map"
-              style={{
-                position: "absolute",
-                inset: 0,
-                touchAction: "none", // ✅ stops scroll fighting map gestures
-              }}
-            />
-          </div>
-
+          />
           <div className="text-xs text-slate-600 mt-2">
             {lat != null && lng != null
               ? `Pin: ${lat.toFixed(5)}, ${lng.toFixed(5)}`
