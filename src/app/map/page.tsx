@@ -34,7 +34,7 @@ export default function MapPage() {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [selected, setSelected] = useState<SelectedPlace | null>(null);
 
-  // Resize fixes for mobile
+  // Mobile resize fixes
   useEffect(() => {
     const onResize = () => mapRef.current?.resize();
     window.addEventListener("resize", onResize);
@@ -97,7 +97,7 @@ export default function MapPage() {
     };
   }, [locations]);
 
-  // Initialise map
+  // Init map once
   useEffect(() => {
     if (!token) return;
     if (mapRef.current) return;
@@ -116,7 +116,8 @@ export default function MapPage() {
     map.on("load", () => {
       map.loadImage("/roll-pin.png", (err, image) => {
         if (err || !image) {
-          setError("Could not load roll-pin.png");
+          console.error("Failed to load /roll-pin.png", err);
+          setError("Could not load roll-pin.png. Check /public/roll-pin.png");
           return;
         }
 
@@ -141,10 +142,13 @@ export default function MapPage() {
               "icon-size": 0.8,
               "icon-anchor": "bottom",
               "icon-allow-overlap": true,
+
               "text-field": ["get", "name"],
+              "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
               "text-size": ["interpolate", ["linear"], ["zoom"], 10, 0, 12, 12, 14, 14],
               "text-anchor": "top",
               "text-offset": [0, 0.6],
+              "text-allow-overlap": false,
             },
             paint: {
               "text-color": "#2c2c2c",
@@ -154,22 +158,34 @@ export default function MapPage() {
           });
         }
 
-        // 🔥 AUTO-FIT MAP TO ALL PINS (ON FIRST LOAD)
+        // ✅ Auto-fit to show all pins on first load
         fitMapToPins(map, geojson.features);
         hasFitRef.current = true;
 
+        // Click pin → open bottom sheet
         map.on("click", "places-layer", (e) => {
-          const f = e.features?.[0];
-          if (!f) return;
+          const feature = e.features?.[0];
+          if (!feature) return;
 
-          const [lng, lat] = (f.geometry as any).coordinates;
-          const id = String((f.properties as any)?.id ?? "");
-          if (!id) return;
+          const coords = (feature.geometry as any).coordinates.slice();
+          const lng = Number(coords[0]);
+          const lat = Number(coords[1]);
+
+          const rawId = (feature.properties as any)?.id;
+          const id = typeof rawId === "string" ? rawId : String(rawId ?? "");
+
+          if (!id || id === "undefined" || id === "null") {
+            setError("This pin has no valid id (cannot open reviews).");
+            return;
+          }
+
+          const name = (feature.properties as any)?.name ?? "Untitled";
+          const desc = (feature.properties as any)?.description ?? "";
 
           setSelected({
             id,
-            name: (f.properties as any)?.name ?? "Untitled",
-            description: (f.properties as any)?.description ?? "",
+            name,
+            description: desc,
             lng,
             lat,
           });
@@ -185,13 +201,14 @@ export default function MapPage() {
     });
 
     mapRef.current = map;
+
     return () => {
       map.remove();
       mapRef.current = null;
     };
   }, [token, geojson]);
 
-  // Update data + re-fit if needed
+  // Update source data when locations change + (optionally) fit once
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -201,13 +218,14 @@ export default function MapPage() {
 
     src.setData(geojson);
 
+    // Fit only once automatically (prevents annoying re-centre every refresh)
     if (!hasFitRef.current) {
       fitMapToPins(map, geojson.features);
       hasFitRef.current = true;
     }
   }, [geojson]);
 
-  // When bottom sheet opens
+  // When bottom sheet opens/closes, pad map + nudge selected pin above sheet
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -231,7 +249,11 @@ export default function MapPage() {
   }, [selected]);
 
   if (!token) {
-    return <div style={{ padding: 16 }}>Missing Mapbox token</div>;
+    return (
+      <div style={{ padding: 16 }}>
+        Missing <b>NEXT_PUBLIC_MAPBOX_TOKEN</b>. Add it in Vercel env vars too.
+      </div>
+    );
   }
 
   const rateUrl = selected ? `/add?locationId=${encodeURIComponent(selected.id)}` : "#";
@@ -239,41 +261,157 @@ export default function MapPage() {
 
   return (
     <main style={{ height: "100dvh", width: "100vw", position: "relative" }}>
-      <div id="rrs-map" style={{ position: "absolute", inset: 0, touchAction: "none" }} />
+      {/* Full screen map */}
+      <div
+        id="rrs-map"
+        style={{
+          position: "absolute",
+          inset: 0,
+          touchAction: "none",
+        }}
+      />
 
-      {selected && (
+      {/* ✅ Add location button (restored) */}
+      <a
+        href="/add-location"
+        style={{
+          position: "fixed",
+          right: 12,
+          bottom: 12,
+          zIndex: 9999,
+          pointerEvents: "auto",
+          background: "#111",
+          color: "#fff",
+          padding: "12px 14px",
+          borderRadius: 14,
+          fontWeight: 700,
+          textDecoration: "none",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+        }}
+      >
+        + Add a location
+      </a>
+
+      {/* ✅ Status overlay (restored) */}
+      <div
+        style={{
+          position: "fixed",
+          left: 12,
+          bottom: 12,
+          zIndex: 9999,
+          pointerEvents: "none",
+          background: "#ffffff",
+          border: "1px solid rgba(0,0,0,0.08)",
+          borderRadius: 14,
+          padding: "10px 12px",
+          fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+          fontSize: 12,
+          maxWidth: 320,
+        }}
+      >
+        {error ? (
+          <div style={{ color: "#b00020", fontWeight: 700 }}>Error: {error}</div>
+        ) : loading ? (
+          <div style={{ color: "#555" }}>Loading locations…</div>
+        ) : (
+          <div style={{ color: "#555" }}>{locations.length} locations</div>
+        )}
+      </div>
+
+      {/* ✅ Fixed bottom sheet */}
+      {selected ? (
         <div
           style={{
             position: "fixed",
-            bottom: 0,
             left: 0,
             right: 0,
+            bottom: 0,
             height: "50dvh",
-            background: "#fff",
+            zIndex: 10000,
+            background: "#ffffff",
+            color: "#111",
             borderTopLeftRadius: 18,
             borderTopRightRadius: 18,
-            padding: 14,
             boxShadow: "0 -12px 30px rgba(0,0,0,0.18)",
+            borderTop: "1px solid rgba(0,0,0,0.08)",
+            padding: 14,
+            overflow: "auto",
+            WebkitOverflowScrolling: "touch",
+            pointerEvents: "auto",
+            fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
           }}
         >
-          <strong>{selected.name}</strong>
-          <p style={{ marginTop: 6 }}>{selected.description}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{selected.name}</div>
+              {selected.description ? (
+                <div style={{ color: "#555", marginTop: 4, fontSize: 13 }}>{selected.description}</div>
+              ) : null}
+            </div>
+
+            <button
+              onClick={() => setSelected(null)}
+              style={{
+                border: "1px solid rgba(0,0,0,0.15)",
+                background: "#fff",
+                borderRadius: 12,
+                padding: "8px 10px",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
 
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-            <a href={rateUrl} style={{ flex: 1, background: "#111", color: "#fff", padding: 12, borderRadius: 14, textAlign: "center" }}>
-              Rate
+            <a
+              href={rateUrl}
+              style={{
+                flex: 1,
+                textDecoration: "none",
+                padding: "12px 12px",
+                borderRadius: 14,
+                background: "#111",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 13,
+                textAlign: "center",
+              }}
+            >
+              Rate this roll
             </a>
-            <a href={reviewsUrl} style={{ flex: 1, border: "1px solid #ddd", padding: 12, borderRadius: 14, textAlign: "center" }}>
-              Reviews
+
+            <a
+              href={reviewsUrl}
+              style={{
+                flex: 1,
+                textDecoration: "none",
+                padding: "12px 12px",
+                borderRadius: 14,
+                border: "1px solid #ddd",
+                background: "#fff",
+                color: "#111",
+                fontWeight: 800,
+                fontSize: 13,
+                textAlign: "center",
+              }}
+            >
+              View reviews
             </a>
           </div>
+
+          <div style={{ marginTop: 14, fontSize: 12, color: "#666" }}>
+            Tip: zoom in to see nearby places, then tap another pin to switch.
+          </div>
         </div>
-      )}
+      ) : null}
     </main>
   );
 }
 
-/* ---------- helper ---------- */
+/* -------- helper -------- */
 function fitMapToPins(map: mapboxgl.Map, features: GeoJSON.Feature[]) {
   if (!features.length) return;
 
@@ -284,10 +422,10 @@ function fitMapToPins(map: mapboxgl.Map, features: GeoJSON.Feature[]) {
   }
 
   const bounds = new mapboxgl.LngLatBounds();
-  features.forEach((f) => {
+  for (const f of features) {
     const [lng, lat] = (f.geometry as any).coordinates;
     bounds.extend([lng, lat]);
-  });
+  }
 
   map.fitBounds(bounds, {
     padding: { top: 80, bottom: 220, left: 60, right: 60 },
