@@ -106,7 +106,12 @@ export default function MapPage() {
 
     const map = new mapboxgl.Map({
       container: "rrs-map",
-      style: "mapbox://styles/mapbox/streets-v12",
+      style:
+  typeof window !== "undefined" &&
+  window.matchMedia &&
+  window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "mapbox://styles/mapbox/dark-v11"
+    : "mapbox://styles/mapbox/streets-v12",
       center: [-2.7, 56.223],
       zoom: 11,
     });
@@ -300,8 +305,9 @@ export default function MapPage() {
           bottom: 12,
           zIndex: 9999,
           pointerEvents: "none",
-          background: "#ffffff",
-          border: "1px solid rgba(0,0,0,0.08)",
+          background: "var(--surface)",
+border: "1px solid var(--border)",
+color: "var(--text)",
           borderRadius: 14,
           padding: "10px 12px",
           fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
@@ -328,12 +334,13 @@ export default function MapPage() {
             bottom: 0,
             height: "50dvh",
             zIndex: 10000,
-            background: "#ffffff",
-            color: "#111",
+            background: "var(--surface)",
+color: "var(--text)",
+
             borderTopLeftRadius: 18,
             borderTopRightRadius: 18,
             boxShadow: "0 -12px 30px rgba(0,0,0,0.18)",
-            borderTop: "1px solid rgba(0,0,0,0.08)",
+            borderTop: "1px solid var(--border)",
             padding: 14,
             overflow: "auto",
             WebkitOverflowScrolling: "touch",
@@ -345,7 +352,7 @@ export default function MapPage() {
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>{selected.name}</div>
               {selected.description ? (
-                <div style={{ color: "#555", marginTop: 4, fontSize: 13 }}>{selected.description}</div>
+                <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>{selected.description}</div>
               ) : null}
             </div>
 
@@ -390,9 +397,9 @@ export default function MapPage() {
                 textDecoration: "none",
                 padding: "12px 12px",
                 borderRadius: 14,
-                border: "1px solid #ddd",
-                background: "#fff",
-                color: "#111",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--muted)",
                 fontWeight: 800,
                 fontSize: 13,
                 textAlign: "center",
@@ -402,7 +409,7 @@ export default function MapPage() {
             </a>
           </div>
 
-          <div style={{ marginTop: 14, fontSize: 12, color: "#666" }}>
+          <div style={{ marginTop: 14, fontSize: 12, color: "var(--muted)" }}>
             Tip: zoom in to see nearby places, then tap another pin to switch.
           </div>
         </div>

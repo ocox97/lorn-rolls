@@ -4,8 +4,11 @@ html {
 
 body {
   color: #111;
-  background-color: #fff;
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
 }
+
 @import "tailwindcss";
 
 :root {
@@ -43,4 +46,49 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+/* Let the browser render form controls correctly in both schemes */
+:root {
+  color-scheme: light dark;
+
+  /* App theme tokens */
+  --bg: #f1f5f9;         /* slate-100 */
+  --surface: #ffffff;
+  --text: #111111;
+  --muted: #555555;
+  --border: rgba(0,0,0,0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #070b12;
+    --surface: #0b1220;
+    --text: #f8fafc;
+    --muted: #cbd5e1;
+    --border: rgba(255,255,255,0.12);
+  }
+
+  /* Quick Tailwind-class compatibility layer (so you don't have to change every component) */
+  body {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .bg-white { background-color: var(--surface) !important; }
+  .bg-slate-100 { background-color: var(--bg) !important; }
+
+  .text-slate-700,
+  .text-slate-600,
+  .text-slate-500 {
+    color: var(--muted) !important;
+  }
+
+  .border-slate-200 {
+    border-color: var(--border) !important;
+  }
+
+  /* Shadows look weak in dark mode unless you beef them slightly */
+  .shadow {
+    box-shadow: 0 10px 30px rgba(0,0,0,0.55) !important;
+  }
 }
