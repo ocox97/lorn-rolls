@@ -1,62 +1,24 @@
+@import "tailwindcss";
+
+/* Prevent font scaling weirdness on iOS */
 html {
   -webkit-text-size-adjust: 100%;
 }
 
-body {
-  color: #111;
-  background: #fff;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: geometricPrecision;
-}
-
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-/* Let the browser render form controls correctly in both schemes */
+/* Theme tokens (single source of truth) */
 :root {
   color-scheme: light dark;
 
-  /* App theme tokens */
-  --bg: #f1f5f9;         /* slate-100 */
+  /* Base app theme */
+  --bg: #f1f5f9;            /* slate-100 */
   --surface: #ffffff;
   --text: #111111;
   --muted: #555555;
-  --border: rgba(0,0,0,0.08);
+  --border: rgba(0, 0, 0, 0.10);
+
+  /* Optional: legacy tokens if anything still references them */
+  --background: var(--bg);
+  --foreground: var(--text);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -64,16 +26,14 @@ body {
     --bg: #070b12;
     --surface: #0b1220;
     --text: #f8fafc;
-    --muted: #cbd5e1;
-    --border: rgba(255,255,255,0.12);
+    --muted: rgba(248, 250, 252, 0.72);
+    --border: rgba(255, 255, 255, 0.14);
+
+    --background: var(--bg);
+    --foreground: var(--text);
   }
 
-  /* Quick Tailwind-class compatibility layer (so you don't have to change every component) */
-  body {
-    background: var(--bg);
-    color: var(--text);
-  }
-
+  /* Tailwind class compatibility layer (so old classnames still look good) */
   .bg-white { background-color: var(--surface) !important; }
   .bg-slate-100 { background-color: var(--bg) !important; }
 
@@ -87,8 +47,18 @@ body {
     border-color: var(--border) !important;
   }
 
-  /* Shadows look weak in dark mode unless you beef them slightly */
+  /* Shadows need to be stronger in dark mode */
   .shadow {
-    box-shadow: 0 10px 30px rgba(0,0,0,0.55) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55) !important;
   }
+}
+
+/* Body uses tokens (only once) */
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
 }
