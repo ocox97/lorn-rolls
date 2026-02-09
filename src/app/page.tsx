@@ -21,10 +21,10 @@ export default function HomePage() {
         }}
       >
         <img
-          src="/rate-a-roll-logo.png"
+          src="/rate-a-roll-scotland-logo.png"
           alt="Rate a Roll Scotland"
           style={{
-            height: 44,       // adjust to taste
+            height: "clamp(36px, 8vw, 48px)",      // adjust to taste
             width: "auto",
             display: "block",
           }}
