@@ -34,6 +34,10 @@ export default function MapPage() {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [selected, setSelected] = useState<SelectedPlace | null>(null);
 
+  // ✅ Active user location
+  const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
+
   // Mobile resize fixes
   useEffect(() => {
     const onResize = () => mapRef.current?.resize();
@@ -43,6 +47,35 @@ export default function MapPage() {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", onResize);
     };
+  }, []);
+
+  // ✅ Watch user location
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("geolocation" in navigator)) {
+      setGeoError("Geolocation not supported on this device.");
+      return;
+    }
+
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        setGeoError(null);
+        setUserPos({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+      },
+      (err) => {
+        setGeoError(err.message || "Unable to get location.");
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 10_000,
+        timeout: 10_000,
+      }
+    );
+
+    return () => navigator.geolocation.clearWatch(id);
   }, []);
 
   // Load locations
@@ -97,6 +130,22 @@ export default function MapPage() {
     };
   }, [locations]);
 
+  // ✅ Find nearest location to user
+  const nearest = useMemo(() => {
+    if (!userPos) return null;
+    if (!locations.length) return null;
+
+    let best: { loc: LocationRow; meters: number } | null = null;
+
+    for (const loc of locations) {
+      if (!Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) continue;
+      const m = haversineMeters(userPos.lat, userPos.lng, loc.lat, loc.lng);
+      if (!best || m < best.meters) best = { loc, meters: m };
+    }
+
+    return best;
+  }, [userPos, locations]);
+
   // Init map once
   useEffect(() => {
     if (!token) return;
@@ -107,11 +156,11 @@ export default function MapPage() {
     const map = new mapboxgl.Map({
       container: "rrs-map",
       style:
-  typeof window !== "undefined" &&
-  window.matchMedia &&
-  window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "mapbox://styles/mapbox/dark-v11"
-    : "mapbox://styles/mapbox/streets-v12",
+        typeof window !== "undefined" &&
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "mapbox://styles/mapbox/dark-v11"
+          : "mapbox://styles/mapbox/streets-v12",
       center: [-2.7, 56.223],
       zoom: 11,
     });
@@ -264,6 +313,12 @@ export default function MapPage() {
   const rateUrl = selected ? `/add?locationId=${encodeURIComponent(selected.id)}` : "#";
   const reviewsUrl = selected ? `/place/${encodeURIComponent(selected.id)}` : "#";
 
+  // ✅ Directions link to nearest roll
+  const nearestDirectionsUrl =
+    nearest && userPos
+      ? googleDirectionsUrl(userPos, { lat: nearest.loc.lat, lng: nearest.loc.lng })
+      : "#";
+
   return (
     <main style={{ height: "100dvh", width: "100vw", position: "relative" }}>
       {/* Full screen map */}
@@ -275,6 +330,85 @@ export default function MapPage() {
           touchAction: "none",
         }}
       />
+
+      {/* ✅ Nearest roll chip */}
+      {nearest && userPos ? (
+        <div
+          style={{
+            position: "fixed",
+            top: "max(env(safe-area-inset-top), 8px)",
+            left: 12,
+            right: 12,
+            zIndex: 10000,
+            display: "flex",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              pointerEvents: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              maxWidth: 520,
+              width: "100%",
+              background: "rgba(255,255,255,0.92)",
+              border: "1px solid rgba(0,0,0,0.08)",
+              borderRadius: 16,
+              padding: "10px 12px",
+              boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+              fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+            }}
+          >
+            <div style={{ flex: 1, lineHeight: 1.1 }}>
+              <div style={{ fontWeight: 900, fontSize: 12 }}>Nearest roll</div>
+              <div style={{ fontSize: 13 }}>
+                {nearest.loc.name} · <b>{formatDistance(nearest.meters)}</b>
+              </div>
+            </div>
+
+            <a
+              href={nearestDirectionsUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                textDecoration: "none",
+                background: "#111",
+                color: "#fff",
+                padding: "8px 10px",
+                borderRadius: 12,
+                fontWeight: 900,
+                fontSize: 13,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Directions
+            </a>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Optional: geolocation error */}
+      {geoError ? (
+        <div
+          style={{
+            position: "fixed",
+            top: "max(env(safe-area-inset-top), 8px)",
+            left: 12,
+            zIndex: 10000,
+            background: "rgba(255,255,255,0.92)",
+            border: "1px solid rgba(0,0,0,0.08)",
+            padding: "10px 12px",
+            borderRadius: 14,
+            fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+            fontSize: 12,
+            pointerEvents: "none",
+          }}
+        >
+          Location off: {geoError}
+        </div>
+      ) : null}
 
       {/* ✅ Add location button (restored) */}
       <a
@@ -306,8 +440,8 @@ export default function MapPage() {
           zIndex: 9999,
           pointerEvents: "none",
           background: "var(--surface)",
-border: "1px solid var(--border)",
-color: "var(--text)",
+          border: "1px solid var(--border)",
+          color: "var(--text)",
           borderRadius: 14,
           padding: "10px 12px",
           fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
@@ -335,7 +469,7 @@ color: "var(--text)",
             height: "50dvh",
             zIndex: 10000,
             background: "var(--surface)",
-color: "var(--text)",
+            color: "var(--text)",
 
             borderTopLeftRadius: 18,
             borderTopRightRadius: 18,
@@ -409,6 +543,30 @@ color: "var(--text)",
             </a>
           </div>
 
+          {/* ✅ Directions for the selected place too (nice extra) */}
+          {userPos ? (
+            <a
+              href={googleDirectionsUrl(userPos, { lat: selected.lat, lng: selected.lng })}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                marginTop: 10,
+                display: "block",
+                textDecoration: "none",
+                padding: "12px 12px",
+                borderRadius: 14,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--text)",
+                fontWeight: 800,
+                fontSize: 13,
+                textAlign: "center",
+              }}
+            >
+              Directions to this roll
+            </a>
+          ) : null}
+
           <div style={{ marginTop: 14, fontSize: 12, color: "var(--muted)" }}>
             Tip: zoom in to see nearby places, then tap another pin to switch.
           </div>
@@ -418,7 +576,7 @@ color: "var(--text)",
   );
 }
 
-/* -------- helper -------- */
+/* -------- helpers -------- */
 function fitMapToPins(map: mapboxgl.Map, features: GeoJSON.Feature[]) {
   if (!features.length) return;
 
@@ -439,4 +597,35 @@ function fitMapToPins(map: mapboxgl.Map, features: GeoJSON.Feature[]) {
     duration: 800,
     maxZoom: 16,
   });
+}
+
+function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+
+  const x =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+function formatDistance(meters: number) {
+  if (!Number.isFinite(meters)) return "";
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
+function googleDirectionsUrl(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number }
+) {
+  // walking by default; change to driving if you want
+  return `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}&travelmode=walking`;
 }
