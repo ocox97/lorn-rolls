@@ -3,30 +3,28 @@ import MapPage from "./map/page";
 export default function HomePage() {
   return (
     <>
-      {/* Logo overlay */}
+      {/* Top logo bar */}
       <div
         style={{
           position: "fixed",
-          top: 12,
-          left: "50%",
-          transform: "translateX(-50%)",
+          top: 0,
+          left: 0,
+          width: "100vw",
           zIndex: 10000,
-          background: "#fff",
-          padding: "10px 14px",
-          borderRadius: 16,
-          boxShadow: "0 6px 18px rgba(0,0,0,0.15)",
-          border: "1px solid rgba(0,0,0,0.08)",
           display: "flex",
-          alignItems: "center",
+          justifyContent: "center",
+          pointerEvents: "none", // map still draggable underneath
         }}
       >
         <img
-          src="/rate-a-roll-scotland-logo.png"
+          src="/rate-a-roll-logo.png"
           alt="Rate a Roll Scotland"
           style={{
-            height: "clamp(36px, 8vw, 48px)",      // adjust to taste
-            width: "auto",
-            display: "block",
+            width: "100%",
+            maxWidth: 520,        // stops it getting silly on desktop
+            height: "auto",
+            marginTop: 8,         // safe spacing from notch/status bar
+            filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.25))",
           }}
         />
       </div>
