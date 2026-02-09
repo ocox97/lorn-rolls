@@ -3,7 +3,7 @@ import MapPage from "./map/page";
 export default function HomePage() {
   return (
     <>
-      {/* Title overlay */}
+      {/* Logo overlay */}
       <div
         style={{
           position: "fixed",
@@ -12,16 +12,23 @@ export default function HomePage() {
           transform: "translateX(-50%)",
           zIndex: 10000,
           background: "#fff",
-          padding: "10px 16px",
+          padding: "10px 14px",
           borderRadius: 16,
-          fontWeight: 900,
-          fontSize: 16,
           boxShadow: "0 6px 18px rgba(0,0,0,0.15)",
           border: "1px solid rgba(0,0,0,0.08)",
-          fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+          display: "flex",
+          alignItems: "center",
         }}
       >
-        🥓 Roll Rating Scotland
+        <img
+          src="/rate-a-roll-logo.png"
+          alt="Rate a Roll Scotland"
+          style={{
+            height: 44,       // adjust to taste
+            width: "auto",
+            display: "block",
+          }}
+        />
       </div>
 
       {/* Map */}
