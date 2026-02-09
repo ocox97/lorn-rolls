@@ -38,6 +38,23 @@ export default function MapPage() {
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
 
+  // ✅ Reactive dark-mode detection (doesn't get "stuck")
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setIsDark(mq.matches);
+    update();
+
+    if ((mq as any).addEventListener) (mq as any).addEventListener("change", update);
+    else (mq as any).addListener(update);
+
+    return () => {
+      if ((mq as any).removeEventListener) (mq as any).removeEventListener("change", update);
+      else (mq as any).removeListener(update);
+    };
+  }, []);
+
   // Mobile resize fixes
   useEffect(() => {
     const onResize = () => mapRef.current?.resize();
@@ -153,14 +170,14 @@ export default function MapPage() {
 
     mapboxgl.accessToken = token;
 
+    const darkNow =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+
     const map = new mapboxgl.Map({
       container: "rrs-map",
-      style:
-        typeof window !== "undefined" &&
-        window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "mapbox://styles/mapbox/dark-v11"
-          : "mapbox://styles/mapbox/streets-v12",
+      style: darkNow ? "mapbox://styles/mapbox/dark-v11" : "mapbox://styles/mapbox/streets-v12",
       center: [-2.7, 56.223],
       zoom: 11,
     });
@@ -204,9 +221,10 @@ export default function MapPage() {
               "text-offset": [0, 0.6],
               "text-allow-overlap": false,
             },
+            // ✅ Label contrast correct for dark map style
             paint: {
-              "text-color": "#2c2c2c",
-              "text-halo-color": "#facc00",
+              "text-color": darkNow ? "#f8fafc" : "#2c2c2c",
+              "text-halo-color": darkNow ? "rgba(0,0,0,0.70)" : "#facc00",
               "text-halo-width": 1.5,
             },
           });
@@ -272,7 +290,6 @@ export default function MapPage() {
 
     src.setData(geojson);
 
-    // Fit only once automatically (prevents annoying re-centre every refresh)
     if (!hasFitRef.current) {
       fitMapToPins(map, geojson.features);
       hasFitRef.current = true;
@@ -313,11 +330,44 @@ export default function MapPage() {
   const rateUrl = selected ? `/add?locationId=${encodeURIComponent(selected.id)}` : "#";
   const reviewsUrl = selected ? `/place/${encodeURIComponent(selected.id)}` : "#";
 
-  // ✅ Directions link to nearest roll
   const nearestDirectionsUrl =
     nearest && userPos
       ? googleDirectionsUrl(userPos, { lat: nearest.loc.lat, lng: nearest.loc.lng })
       : "#";
+
+  const selectedDirectionsUrl =
+    selected && userPos ? googleDirectionsUrl(userPos, { lat: selected.lat, lng: selected.lng }) : "#";
+
+  // ✅ Overlay theme (bulletproof even if CSS vars misbehave)
+  const overlayBg = isDark ? "rgba(12, 18, 32, 0.94)" : "rgba(255,255,255,0.94)";
+  const overlayText = isDark ? "#f8fafc" : "#111";
+  const overlayBorder = isDark ? "1px solid rgba(255,255,255,0.14)" : "1px solid rgba(0,0,0,0.10)";
+  const overlayShadow = isDark ? "0 10px 28px rgba(0,0,0,0.60)" : "0 6px 18px rgba(0,0,0,0.12)";
+
+  const primaryBtn: React.CSSProperties = {
+    textDecoration: "none",
+    padding: "12px 12px",
+    borderRadius: 14,
+    background: overlayText, // invert
+    color: isDark ? "#0b1220" : "#fff",
+    fontWeight: 900,
+    fontSize: 13,
+    textAlign: "center",
+    border: "1px solid rgba(0,0,0,0)",
+  };
+
+  const ghostBtn: React.CSSProperties = {
+    textDecoration: "none",
+    padding: "12px 12px",
+    borderRadius: 14,
+    border: overlayBorder,
+    background: overlayBg,
+    color: overlayText,
+    fontWeight: 900,
+    fontSize: 13,
+    textAlign: "center",
+    backdropFilter: "blur(6px)",
+  };
 
   return (
     <main style={{ height: "100dvh", width: "100vw", position: "relative" }}>
@@ -331,7 +381,7 @@ export default function MapPage() {
         }}
       />
 
-      {/* ✅ Nearest roll chip */}
+      {/* ✅ Nearest roll chip (fixed contrast in dark mode) */}
       {nearest && userPos ? (
         <div
           style={{
@@ -353,11 +403,13 @@ export default function MapPage() {
               gap: 10,
               maxWidth: 520,
               width: "100%",
-              background: "rgba(255,255,255,0.92)",
-              border: "1px solid rgba(0,0,0,0.08)",
+              background: overlayBg,
+              color: overlayText,
+              border: overlayBorder,
               borderRadius: 16,
               padding: "10px 12px",
-              boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+              boxShadow: overlayShadow,
+              backdropFilter: "blur(6px)",
               fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
             }}
           >
@@ -372,16 +424,7 @@ export default function MapPage() {
               href={nearestDirectionsUrl}
               target="_blank"
               rel="noreferrer"
-              style={{
-                textDecoration: "none",
-                background: "#111",
-                color: "#fff",
-                padding: "8px 10px",
-                borderRadius: 12,
-                fontWeight: 900,
-                fontSize: 13,
-                whiteSpace: "nowrap",
-              }}
+              style={{ ...primaryBtn, padding: "8px 12px", borderRadius: 12, whiteSpace: "nowrap" }}
             >
               Directions
             </a>
@@ -397,10 +440,13 @@ export default function MapPage() {
             top: "max(env(safe-area-inset-top), 8px)",
             left: 12,
             zIndex: 10000,
-            background: "rgba(255,255,255,0.92)",
-            border: "1px solid rgba(0,0,0,0.08)",
+            background: overlayBg,
+            color: overlayText,
+            border: overlayBorder,
             padding: "10px 12px",
             borderRadius: 14,
+            boxShadow: overlayShadow,
+            backdropFilter: "blur(6px)",
             fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
             fontSize: 12,
             pointerEvents: "none",
@@ -410,7 +456,7 @@ export default function MapPage() {
         </div>
       ) : null}
 
-      {/* ✅ Add location button (restored) */}
+      {/* ✅ Add location button */}
       <a
         href="/add-location"
         style={{
@@ -419,19 +465,19 @@ export default function MapPage() {
           bottom: 12,
           zIndex: 9999,
           pointerEvents: "auto",
-          background: "#111",
-          color: "#fff",
+          background: overlayText,
+          color: isDark ? "#0b1220" : "#fff",
           padding: "12px 14px",
           borderRadius: 14,
-          fontWeight: 700,
+          fontWeight: 800,
           textDecoration: "none",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+          boxShadow: overlayShadow,
         }}
       >
         + Add a location
       </a>
 
-      {/* ✅ Status overlay (restored) */}
+      {/* ✅ Status overlay */}
       <div
         style={{
           position: "fixed",
@@ -439,11 +485,13 @@ export default function MapPage() {
           bottom: 12,
           zIndex: 9999,
           pointerEvents: "none",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          color: "var(--text)",
+          background: overlayBg,
+          border: overlayBorder,
+          color: overlayText,
           borderRadius: 14,
           padding: "10px 12px",
+          boxShadow: overlayShadow,
+          backdropFilter: "blur(6px)",
           fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
           fontSize: 12,
           maxWidth: 320,
@@ -452,9 +500,9 @@ export default function MapPage() {
         {error ? (
           <div style={{ color: "#b00020", fontWeight: 700 }}>Error: {error}</div>
         ) : loading ? (
-          <div style={{ color: "#555" }}>Loading locations…</div>
+          <div style={{ opacity: 0.8 }}>Loading locations…</div>
         ) : (
-          <div style={{ color: "#555" }}>{locations.length} locations</div>
+          <div style={{ opacity: 0.8 }}>{locations.length} locations</div>
         )}
       </div>
 
@@ -468,13 +516,12 @@ export default function MapPage() {
             bottom: 0,
             height: "50dvh",
             zIndex: 10000,
-            background: "var(--surface)",
-            color: "var(--text)",
-
+            background: isDark ? "#0b1220" : "#fff",
+            color: overlayText,
             borderTopLeftRadius: 18,
             borderTopRightRadius: 18,
-            boxShadow: "0 -12px 30px rgba(0,0,0,0.18)",
-            borderTop: "1px solid var(--border)",
+            boxShadow: isDark ? "0 -14px 34px rgba(0,0,0,0.65)" : "0 -12px 30px rgba(0,0,0,0.18)",
+            borderTop: isDark ? "1px solid rgba(255,255,255,0.14)" : "1px solid rgba(0,0,0,0.10)",
             padding: 14,
             overflow: "auto",
             WebkitOverflowScrolling: "touch",
@@ -486,18 +533,19 @@ export default function MapPage() {
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>{selected.name}</div>
               {selected.description ? (
-                <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>{selected.description}</div>
+                <div style={{ opacity: 0.75, marginTop: 4, fontSize: 13 }}>{selected.description}</div>
               ) : null}
             </div>
 
             <button
               onClick={() => setSelected(null)}
               style={{
-                border: "1px solid rgba(0,0,0,0.15)",
-                background: "#fff",
+                border: isDark ? "1px solid rgba(255,255,255,0.14)" : "1px solid rgba(0,0,0,0.12)",
+                background: isDark ? "#0f172a" : "#fff",
+                color: overlayText,
                 borderRadius: 12,
                 padding: "8px 10px",
-                fontWeight: 800,
+                fontWeight: 900,
                 cursor: "pointer",
               }}
               aria-label="Close"
@@ -506,68 +554,28 @@ export default function MapPage() {
             </button>
           </div>
 
+          {/* ✅ Action row includes Directions */}
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-            <a
-              href={rateUrl}
-              style={{
-                flex: 1,
-                textDecoration: "none",
-                padding: "12px 12px",
-                borderRadius: 14,
-                background: "#111",
-                color: "#fff",
-                fontWeight: 800,
-                fontSize: 13,
-                textAlign: "center",
-              }}
-            >
+            <a href={rateUrl} style={{ ...primaryBtn, flex: 1 }}>
               Rate this roll
             </a>
 
-            <a
-              href={reviewsUrl}
-              style={{
-                flex: 1,
-                textDecoration: "none",
-                padding: "12px 12px",
-                borderRadius: 14,
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                color: "var(--muted)",
-                fontWeight: 800,
-                fontSize: 13,
-                textAlign: "center",
-              }}
-            >
+            <a href={reviewsUrl} style={{ ...ghostBtn, flex: 1 }}>
               View reviews
+            </a>
+
+            <a href={selectedDirectionsUrl} target="_blank" rel="noreferrer" style={{ ...ghostBtn, flex: 1 }}>
+              Directions
             </a>
           </div>
 
-          {/* ✅ Directions for the selected place too (nice extra) */}
-          {userPos ? (
-            <a
-              href={googleDirectionsUrl(userPos, { lat: selected.lat, lng: selected.lng })}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                marginTop: 10,
-                display: "block",
-                textDecoration: "none",
-                padding: "12px 12px",
-                borderRadius: 14,
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                color: "var(--text)",
-                fontWeight: 800,
-                fontSize: 13,
-                textAlign: "center",
-              }}
-            >
-              Directions to this roll
-            </a>
+          {!userPos ? (
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+              Enable location to get directions.
+            </div>
           ) : null}
 
-          <div style={{ marginTop: 14, fontSize: 12, color: "var(--muted)" }}>
+          <div style={{ marginTop: 14, fontSize: 12, opacity: 0.75 }}>
             Tip: zoom in to see nearby places, then tap another pin to switch.
           </div>
         </div>
@@ -622,10 +630,6 @@ function formatDistance(meters: number) {
   return `${(meters / 1000).toFixed(1)} km`;
 }
 
-function googleDirectionsUrl(
-  from: { lat: number; lng: number },
-  to: { lat: number; lng: number }
-) {
-  // walking by default; change to driving if you want
+function googleDirectionsUrl(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
   return `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}&travelmode=walking`;
 }
