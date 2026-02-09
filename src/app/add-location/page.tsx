@@ -12,6 +12,9 @@ export default function AddLocationPage() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const mapLoadedRef = useRef(false);
 
+  // ✅ one-time auto-centre guard
+  const hasCenteredOnceRef = useRef(false);
+
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
@@ -21,6 +24,9 @@ export default function AddLocationPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  // ✅ locating state (for button)
+  const [locating, setLocating] = useState(false);
 
   const selectedGeojson: GeoJsonFeatureCollection = useMemo(() => {
     if (lat == null || lng == null) return { type: "FeatureCollection", features: [] };
@@ -35,6 +41,44 @@ export default function AddLocationPage() {
       ],
     };
   }, [lat, lng]);
+
+  // ✅ Center map on user's current location (and optionally drop pin)
+  function centerOnMyLocation() {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!("geolocation" in navigator)) {
+      setError("Geolocation isn't supported on this device.");
+      return;
+    }
+
+    setLocating(true);
+    setError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const myLat = pos.coords.latitude;
+        const myLng = pos.coords.longitude;
+
+        map.easeTo({
+          center: [myLng, myLat],
+          zoom: Math.max(map.getZoom(), 15),
+          duration: 650,
+        });
+
+        // ✅ Drop the pin at your location automatically on first centre
+        setLat(myLat);
+        setLng(myLng);
+
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        setError(err.message || "Couldn't get your location. Check permissions.");
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 10_000 }
+    );
+  }
 
   // Mobile resize fixes
   useEffect(() => {
@@ -65,6 +109,12 @@ export default function AddLocationPage() {
 
     map.on("load", () => {
       mapLoadedRef.current = true;
+
+      // ✅ Auto-centre once on first load
+      if (!hasCenteredOnceRef.current) {
+        hasCenteredOnceRef.current = true;
+        centerOnMyLocation();
+      }
 
       map.loadImage("/roll-pin.png", (err, image) => {
         if (err || !image) {
@@ -100,19 +150,22 @@ export default function AddLocationPage() {
 
         // Optional: a subtle halo ring under the pin for clarity
         if (!map.getLayer("selected-pin-halo")) {
-          map.addLayer({
-            id: "selected-pin-halo",
-            type: "circle",
-            source: "selected-pin",
-            paint: {
-              "circle-radius": 12,
-              "circle-color": "#facc00",
-              "circle-opacity": 0.25,
-              "circle-stroke-color": "#111",
-              "circle-stroke-width": 1,
-              "circle-stroke-opacity": 0.25,
+          map.addLayer(
+            {
+              id: "selected-pin-halo",
+              type: "circle",
+              source: "selected-pin",
+              paint: {
+                "circle-radius": 12,
+                "circle-color": "#facc00",
+                "circle-opacity": 0.25,
+                "circle-stroke-color": "#111",
+                "circle-stroke-width": 1,
+                "circle-stroke-opacity": 0.25,
+              },
             },
-          }, "selected-pin-layer"); // place halo beneath pin
+            "selected-pin-layer" // place halo beneath pin
+          );
         }
       });
     });
@@ -219,6 +272,23 @@ export default function AddLocationPage() {
 
         {/* MAP */}
         <div className="rounded-2xl bg-white p-4 shadow border border-slate-200">
+          {/* ✅ "Use my location" button */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-semibold text-slate-700">Map</div>
+            <button
+              type="button"
+              onClick={centerOnMyLocation}
+              disabled={locating}
+              className={`rounded-xl px-3 py-2 text-sm font-semibold border ${
+                locating
+                  ? "bg-slate-200 text-slate-600 border-slate-200"
+                  : "bg-white text-slate-900 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {locating ? "Locating…" : "Use my location"}
+            </button>
+          </div>
+
           <div
             id="add-map"
             style={{
