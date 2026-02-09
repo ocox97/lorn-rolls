@@ -38,6 +38,13 @@ export default function MapPage() {
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
 
+  // ✅ Delay nearest-roll chip (so it appears after logo fades)
+  const [showNearest, setShowNearest] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShowNearest(true), 5200); // match your logo fade time
+    return () => clearTimeout(t);
+  }, []);
+
   // ✅ Reactive dark-mode detection (doesn't get "stuck")
   const [isDark, setIsDark] = useState(false);
   useEffect(() => {
@@ -221,7 +228,6 @@ export default function MapPage() {
               "text-offset": [0, 0.6],
               "text-allow-overlap": false,
             },
-            // ✅ Label contrast correct for dark map style
             paint: {
               "text-color": darkNow ? "#f8fafc" : "#2c2c2c",
               "text-halo-color": darkNow ? "rgba(0,0,0,0.70)" : "#facc00",
@@ -230,11 +236,9 @@ export default function MapPage() {
           });
         }
 
-        // ✅ Auto-fit to show all pins on first load
         fitMapToPins(map, geojson.features);
         hasFitRef.current = true;
 
-        // Click pin → open bottom sheet
         map.on("click", "places-layer", (e) => {
           const feature = e.features?.[0];
           if (!feature) return;
@@ -254,13 +258,7 @@ export default function MapPage() {
           const name = (feature.properties as any)?.name ?? "Untitled";
           const desc = (feature.properties as any)?.description ?? "";
 
-          setSelected({
-            id,
-            name,
-            description: desc,
-            lng,
-            lat,
-          });
+          setSelected({ id, name, description: desc, lng, lat });
         });
 
         map.on("mouseenter", "places-layer", () => {
@@ -331,14 +329,12 @@ export default function MapPage() {
   const reviewsUrl = selected ? `/place/${encodeURIComponent(selected.id)}` : "#";
 
   const nearestDirectionsUrl =
-    nearest && userPos
-      ? googleDirectionsUrl(userPos, { lat: nearest.loc.lat, lng: nearest.loc.lng })
-      : "#";
+    nearest && userPos ? googleDirectionsUrl(userPos, { lat: nearest.loc.lat, lng: nearest.loc.lng }) : "#";
 
   const selectedDirectionsUrl =
     selected && userPos ? googleDirectionsUrl(userPos, { lat: selected.lat, lng: selected.lng }) : "#";
 
-  // ✅ Overlay theme (bulletproof even if CSS vars misbehave)
+  // ✅ Overlay theme
   const overlayBg = isDark ? "rgba(12, 18, 32, 0.94)" : "rgba(255,255,255,0.94)";
   const overlayText = isDark ? "#f8fafc" : "#111";
   const overlayBorder = isDark ? "1px solid rgba(255,255,255,0.14)" : "1px solid rgba(0,0,0,0.10)";
@@ -348,7 +344,7 @@ export default function MapPage() {
     textDecoration: "none",
     padding: "12px 12px",
     borderRadius: 14,
-    background: overlayText, // invert
+    background: overlayText,
     color: isDark ? "#0b1220" : "#fff",
     fontWeight: 900,
     fontSize: 13,
@@ -371,18 +367,10 @@ export default function MapPage() {
 
   return (
     <main style={{ height: "100dvh", width: "100vw", position: "relative" }}>
-      {/* Full screen map */}
-      <div
-        id="rrs-map"
-        style={{
-          position: "absolute",
-          inset: 0,
-          touchAction: "none",
-        }}
-      />
+      <div id="rrs-map" style={{ position: "absolute", inset: 0, touchAction: "none" }} />
 
-      {/* ✅ Nearest roll chip (fixed contrast in dark mode) */}
-      {nearest && userPos ? (
+      {/* ✅ Nearest roll chip only after delay */}
+      {showNearest && nearest && userPos ? (
         <div
           style={{
             position: "fixed",
@@ -432,7 +420,6 @@ export default function MapPage() {
         </div>
       ) : null}
 
-      {/* Optional: geolocation error */}
       {geoError ? (
         <div
           style={{
@@ -456,7 +443,6 @@ export default function MapPage() {
         </div>
       ) : null}
 
-      {/* ✅ Add location button */}
       <a
         href="/add-location"
         style={{
@@ -477,7 +463,6 @@ export default function MapPage() {
         + Add a location
       </a>
 
-      {/* ✅ Status overlay */}
       <div
         style={{
           position: "fixed",
@@ -506,7 +491,6 @@ export default function MapPage() {
         )}
       </div>
 
-      {/* ✅ Fixed bottom sheet */}
       {selected ? (
         <div
           style={{
@@ -554,7 +538,6 @@ export default function MapPage() {
             </button>
           </div>
 
-          {/* ✅ Action row includes Directions */}
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             <a href={rateUrl} style={{ ...primaryBtn, flex: 1 }}>
               Rate this roll
@@ -570,9 +553,7 @@ export default function MapPage() {
           </div>
 
           {!userPos ? (
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-              Enable location to get directions.
-            </div>
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>Enable location to get directions.</div>
           ) : null}
 
           <div style={{ marginTop: 14, fontSize: 12, opacity: 0.75 }}>
